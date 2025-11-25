@@ -17,3 +17,9 @@ ngrok config add-authtoken 35q491RZpipS1t4q4XhYPBd86CT_85mAVJXrV5pKUdaiRAwd6
 
 python test.py
 ngrok http 5000
+
+
+
+fastapi
+uvicorn main:app --reload --host 0.0.0.0 --port 5000
+pip install fastapi uvicorn easyocr python-dotenv google-genai opencv-python
