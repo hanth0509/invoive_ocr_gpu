@@ -1,0 +1,19 @@
+# tạo thư mục và vào thư mục
+mkdir invoice_ocr
+cd invoice_ocr
+
+# tạo virtualenv
+python -m venv gpu-venv
+
+# kích hoạt:
+gpu-venv\Scripts\activate
+
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install easyocr opencv-python matplotlib python-dotenv google-genai
+
+pip install flask pyngrok requests opencv-python matplotlib easyocr google-genai python-dotenv
+
+ngrok config add-authtoken 35q491RZpipS1t4q4XhYPBd86CT_85mAVJXrV5pKUdaiRAwd6
+
+python test.py
+ngrok http 5000

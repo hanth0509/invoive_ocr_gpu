@@ -1,0 +1,7 @@
+easyocr
+opencv-python
+numpy
+matplotlib
+pillow
+google-genai
+python-dotenv
