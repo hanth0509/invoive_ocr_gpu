@@ -8,6 +8,8 @@ import numpy as np
 from dotenv import load_dotenv
 import json
 import re
+from fetch_categories import categories
+import requests
 
 # Load .env (chứa GOOGLE_API_KEY)
 load_dotenv()
@@ -18,8 +20,12 @@ client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 # EasyOCR Reader
 reader = easyocr.Reader(['en', 'vi'])
 
+# classification_text = ", ".join(categories)
+classification_text = "- " + "\n- ".join([f'{c}' for c in categories])
+
+
 # Prompt mới để phân loại + nhận tổng tiền
-INVOICE_PROMPT = """
+INVOICE_PROMPT = f"""
 You are an expert in invoice classification and invoice amount extraction.
 I will provide you with a block of text that contains the content of an invoice.
 
@@ -30,18 +36,19 @@ Your tasks:
 4. Return ONLY a valid JSON object. Do NOT use backticks. Do NOT wrap in markdown.
 
 Output format (STRICT):
-{
+{{
   "invoice_type": "...",
   "total_amount": "..."
-}
+}}
 
-Classification types (choose one):
-- "Electricity Invoice"
-- "Water Invoice"
-- "Food & Beverage Invoice"
-- "Consumer Goods Invoice"
-- "Service Invoice"
-- "Other Invoice"
+Classification types (choose ONLY ONE from the list below):
+{classification_text}
+
+Rules:
+- You MUST choose **exactly one category from the list above**.
+- Do NOT invent new categories.
+- Do NOT translate, modify, or add words to the category.
+- If none fit perfectly, choose "Others" or the closest match.
 
 Amount rules:
 - Prefer the highest monetary value.
@@ -58,6 +65,7 @@ Important:
 
 Here is the invoice text to analyze:
 """
+
 
 
 # Hàm OCR 1 ảnh
@@ -85,7 +93,11 @@ def run_ocr_multiple(files) -> str:
         # Thêm ký tự ngăn cách riêng biệt giữa các file
         all_text.append(f"\n---FILE {idx+1}---\n{text}\n")
     return "\n".join(all_text)
-
+# Hàm tải ảnh từ URL 
+def download_image_from_url(url: str) -> bytes:
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response.content
 # Hàm gọi Gemini để phân loại + lấy total
 def analyze_invoice(full_text: str):
     full_prompt = INVOICE_PROMPT + full_text
@@ -137,36 +149,77 @@ app = Flask(__name__)
 
 
 # chỉ tổng + phân loại
+class AIParseError(Exception):
+    def __init__(self, raw_output):
+        self.raw_output = raw_output
+        super().__init__("Gemini did not return valid JSON")
+        
+
 @app.route("/classify_invoice", methods=["POST"])
 def classify_invoice_api():
-    if "file" not in request.files:
-        return jsonify({"error": "Missing 'file' in request"}), 400
+    # Bắt buộc phải là JSON
+    if not request.is_json:
+        return jsonify({
+            "error": "ValidationError",
+            "message": "Only JSON body is allowed. Use Content-Type: application/json."
+        }), 200
 
-    files = request.files.getlist("file")
+    data = request.get_json(silent=True) or {}
+
+    urls = data.get("urls")
+
+    # Kiểm tra không có urls
+    if not urls or not isinstance(urls, list):
+        return jsonify({
+            "error": "ValidationError",
+            "message": "'urls' must be a non-empty list."
+        }), 200
+
+    collected_texts = []
 
     try:
-        # OCR nhiều ảnh
-        ocr_text = run_ocr_multiple(files)
+        # OCR cho từng URL
+        for idx, url in enumerate(urls):
+            try:
+                img_bytes = download_image_from_url(url)
+                text = run_ocr_from_file(img_bytes)
+                collected_texts.append(
+                    f"\n---URL FILE {idx+1}---\n{text}\n"
+                )
+            except Exception as uerr:
+                collected_texts.append(
+                    f"\n---URL FILE {idx+1} ERROR---\nCannot download or OCR: {str(uerr)}\n"
+                )
 
-        # Gọi gemini
+        ocr_text = "\n".join(collected_texts)
+
+        # Gọi Gemini
         ai_output = analyze_invoice(ocr_text)
 
-        # Làm sạch backticks
         cleaned = ai_output.replace("```json", "").replace("```", "").strip()
 
-        # Trích JSON
         match = re.search(r"\{[\s\S]*\}", cleaned)
         if not match:
-            return jsonify({"error": "No valid JSON found", "raw_output": ai_output}), 500
+            raise AIParseError(ai_output)
 
         json_data = json.loads(match.group(0))
-        
-        # Chỉ trả về đúng JSON kết quả
+
         return jsonify(json_data)
+
+    except AIParseError as ape:
+        return jsonify({
+            "error": "AIParseError",
+            "message": str(ape),
+            "raw_output": ape.raw_output
+        }), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    
-#
+        return jsonify({
+            "error": "ProcessingError",
+            "message": str(e),
+            "raw_output": getattr(e, "raw_output", None)
+        }), 200
+
 
 
 if __name__ == "__main__":
