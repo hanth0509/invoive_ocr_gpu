@@ -192,10 +192,16 @@ def classify_invoice_api():
                 )
 
         ocr_text = "\n".join(collected_texts)
-
+        # In OCR ra màn hình console
+        print("\n================ OCR OUTPUT ================\n")
+        print(ocr_text)
+        print("\n============================================\n")
         # Gọi Gemini
         ai_output = analyze_invoice(ocr_text)
-
+        # In raw output từ Gemini
+        print("\n================ GEMINI RAW OUTPUT ================\n")
+        print(ai_output)
+        
         cleaned = ai_output.replace("```json", "").replace("```", "").strip()
 
         match = re.search(r"\{[\s\S]*\}", cleaned)
