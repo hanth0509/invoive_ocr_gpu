@@ -11,6 +11,8 @@ import re
 from fetch_categories import categories
 import requests
 
+from utils.classify import classify_invoice
+
 # Load .env (chứa GOOGLE_API_KEY)
 load_dotenv()
 
@@ -103,7 +105,7 @@ def analyze_invoice(full_text: str):
     full_prompt = INVOICE_PROMPT + full_text
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash-lite",
+        model="gemini-1.5-flash",
         contents=full_prompt,
         config=genai.types.GenerateContentConfig(temperature=0.1)
     )
@@ -183,25 +185,32 @@ def classify_invoice_api():
             try:
                 img_bytes = download_image_from_url(url)
                 text = run_ocr_from_file(img_bytes)
+                print("\n================ OCR OUTPUT ================\n")
+
+                print(text)
+                print("\n================ GEMINI RAW OUTPUT ================\n")
+                ai_output = classify_invoice(text, analyze=True)
+                print(ai_output)
+
                 collected_texts.append(
                     f"\n---URL FILE {idx+1}---\n{text}\n"
                 )
             except Exception as uerr:
                 collected_texts.append(
                     f"\n---URL FILE {idx+1} ERROR---\nCannot download or OCR: {str(uerr)}\n"
-                )
-
+                ) 
+ 
         ocr_text = "\n".join(collected_texts)
         # In OCR ra màn hình console
-        print("\n================ OCR OUTPUT ================\n")
-        print(ocr_text)
-        print("\n============================================\n")
+        # print("\n================ OCR OUTPUT ================\n")
+        # print(ocr_text)
+        # print("\n============================================\n")
         # Gọi Gemini
-        ai_output = analyze_invoice(ocr_text)
+        # ai_output = analyze_invoice(ocr_text)
         # In raw output từ Gemini
-        print("\n================ GEMINI RAW OUTPUT ================\n")
-        print(ai_output)
-        
+        # print("\n================ GEMINI RAW OUTPUT ================\n")
+        # print(ai_output)
+         
         cleaned = ai_output.replace("```json", "").replace("```", "").strip()
 
         match = re.search(r"\{[\s\S]*\}", cleaned)
